@@ -96,7 +96,7 @@ def generate(
         
         if not combined_text:
             typer.secho(
-                "✗ No text extracted from PDFs. Please check your input directory.",
+                "[ERROR] No text extracted from PDFs. Please check your input directory.",
                 fg=typer.colors.RED,
                 bold=True
             )
@@ -112,7 +112,7 @@ def generate(
         
         if not chunks:
             typer.secho(
-                "✗ Failed to create text chunks.",
+                "[ERROR] Failed to create text chunks.",
                 fg=typer.colors.RED,
                 bold=True
             )
@@ -130,7 +130,7 @@ def generate(
         
         if not questions:
             typer.secho(
-                "✗ No questions generated. Please check your API key and try again.",
+                "[ERROR] No questions generated. Please check your API key and try again.",
                 fg=typer.colors.RED,
                 bold=True
             )
@@ -166,7 +166,7 @@ def generate(
         print()
         print("=" * 70)
         typer.secho(
-            "✓ Question Generator completed successfully!",
+            "[SUCCESS] Question Generator completed successfully!",
             fg=typer.colors.GREEN,
             bold=True
         )
@@ -179,7 +179,7 @@ def generate(
     except Exception as e:
         print()
         typer.secho(
-            f"✗ Error: {str(e)}",
+            f"[ERROR] {str(e)}",
             fg=typer.colors.RED,
             bold=True
         )
@@ -209,15 +209,15 @@ def init():
     
     if not books_dir.exists():
         books_dir.mkdir(parents=True)
-        print(f"  ✓ Created {books_dir}/")
+        print(f"  [OK] Created {books_dir}/")
     else:
-        print(f"  ✓ Found {books_dir}/")
+        print(f"  [OK] Found {books_dir}/")
     
     if not output_dir.exists():
         output_dir.mkdir(parents=True)
-        print(f"  ✓ Created {output_dir}/")
+        print(f"  [OK] Created {output_dir}/")
     else:
-        print(f"  ✓ Found {output_dir}/")
+        print(f"  [OK] Found {output_dir}/")
     
     print()
     
@@ -226,10 +226,10 @@ def init():
     try:
         from generator import QuestionGenerator
         generator = QuestionGenerator()
-        print("  ✓ Claude API key found")
+        print("  [OK] Claude API key found")
     except Exception as e:
         typer.secho(
-            f"  ✗ Claude API key not found or invalid",
+            f"  [ERROR] Claude API key not found or invalid",
             fg=typer.colors.RED
         )
         typer.secho(
@@ -240,7 +240,7 @@ def init():
     
     print()
     typer.secho(
-        "✓ Question Generator initialized successfully!",
+        "[SUCCESS] Question Generator initialized successfully!",
         fg=typer.colors.GREEN,
         bold=True
     )

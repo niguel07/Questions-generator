@@ -272,7 +272,7 @@ Remember to return ONLY the JSON array, no other text or formatting."""
         # Trim to exact count if we generated too many
         all_questions = all_questions[:total_questions]
         
-        print(f"\n✓ Successfully generated {len(all_questions)} questions")
+        print(f"\n[SUCCESS] Generated {len(all_questions)} questions")
         
         return all_questions
 

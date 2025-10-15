@@ -37,7 +37,7 @@ def save_questions(
                 indent=indent
             )
         
-        print(f"\n✓ Saved {len(questions)} questions to {output_file}")
+        print(f"\n[SUCCESS] Saved {len(questions)} questions to {output_file}")
         print(f"  File size: {output_path.stat().st_size:,} bytes")
         
     except Exception as e:
