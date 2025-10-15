@@ -632,6 +632,263 @@ The validation report (`output/validation_report.txt`) provides:
 - Adjust your source material or generation parameters
 - Monitor validation success rates over time
 
+## Phase 5 – React Dashboard & Analytics API
+
+Phase 5 adds a professional React dashboard with FastAPI backend for visualizing question generation statistics and validation reports in real-time.
+
+### Backend Analytics API (`src/analytics.py`)
+
+FastAPI backend that serves question statistics and reports to the React frontend:
+
+#### API Endpoints
+
+1. **GET /** - API information and available endpoints
+2. **GET /health** - Health check endpoint
+3. **GET /summary** - Returns complete statistics:
+   ```json
+   {
+     "total_questions": 9876,
+     "avg_quality_score": 0.92,
+     "categories": {
+       "Geography": 2450,
+       "History": 2500,
+       "Culture": 2460,
+       "General Knowledge": 2466
+     },
+     "difficulty": {
+       "Easy": 4700,
+       "Medium": 3500,
+       "Hard": 1676
+     },
+     "quality_distribution": {
+       "excellent": 5876,
+       "good": 3200,
+       "fair": 700,
+       "poor": 100
+     }
+   }
+   ```
+
+4. **GET /validation-report** - Returns validation report text
+5. **GET /questions?limit=10** - Returns sample questions
+
+#### Features
+
+- **CORS Support**: Configured for `localhost:5173` (React dev server)
+- **Error Handling**: Graceful error messages if files don't exist
+- **Auto-reload**: Uses uvicorn with `--reload` flag for development
+
+### Frontend Dashboard (`frontend/`)
+
+Professional React + Vite dashboard with Material-UI components:
+
+#### Tech Stack
+
+- **React 18** with Vite for fast development
+- **Material-UI** for component library
+- **Recharts** for data visualization
+- **Axios** for API communication
+
+#### Two-Color Theme
+
+**Primary Color**: #2563EB (Blue)
+- Headers, buttons, charts, accents
+
+**Neutral Color**: #F9FAFB (Light Gray)
+- Background, cards, surfaces
+
+**Design Philosophy**:
+- Minimal and clean
+- Rounded corners (8px)
+- Subtle shadows
+- Smooth hover effects
+- Professional typography (Inter font)
+
+#### Components
+
+1. **StatsCard** - Displays key metrics (total questions, avg quality score)
+   - Large value display
+   - Icon decoration
+   - Hover animation
+
+2. **ChartCard** - Visualizes data distributions
+   - Bar charts for categories and quality
+   - Pie chart for difficulty levels
+   - Responsive sizing
+
+3. **ReportPanel** - Shows validation report
+   - Monospace font for report text
+   - Scrollable content area
+   - Syntax highlighting
+
+#### Features
+
+- **Auto-Refresh**: Fetches new data every 60 seconds
+- **Manual Refresh**: Button to reload data on demand
+- **Last Update Timestamp**: Shows when data was last fetched
+- **Error Handling**: Displays friendly error messages if backend is unavailable
+- **Loading States**: Shows spinner while fetching data
+- **Responsive Design**: Works on desktop, tablet, and mobile (min-width: 320px)
+
+### Running the Full Stack
+
+#### 1. Start the Backend (Terminal 1)
+
+```bash
+# From project root
+cd Questions-generator
+
+# Install Python dependencies (if not already done)
+pip install -r requirements.txt
+
+# Start FastAPI server
+uvicorn src.analytics:app --reload
+```
+
+Backend will be available at: `http://localhost:8000`
+
+#### 2. Start the Frontend (Terminal 2)
+
+```bash
+# From project root
+cd Questions-generator/frontend
+
+# Install npm dependencies (first time only)
+npm install
+
+# Start development server
+npm run dev
+```
+
+Frontend will be available at: `http://localhost:5173`
+
+#### Quick Start Script
+
+For convenience, you can run both servers:
+
+**Windows (PowerShell):**
+```powershell
+# Terminal 1
+cd Questions-generator
+uvicorn src.analytics:app --reload
+
+# Terminal 2
+cd Questions-generator
+npm run dev --prefix frontend
+```
+
+**Linux/Mac:**
+```bash
+# Terminal 1
+cd Questions-generator && uvicorn src.analytics:app --reload
+
+# Terminal 2
+cd Questions-generator && npm run dev --prefix frontend
+```
+
+### Dashboard Features
+
+#### Real-Time Statistics
+
+The dashboard displays:
+
+1. **Total Questions** - Number of validated questions in dataset
+2. **Average Quality Score** - Mean quality score (0.0 - 1.0)
+3. **Category Distribution** - Bar chart showing question breakdown by category
+4. **Difficulty Distribution** - Pie chart showing Easy/Medium/Hard distribution
+5. **Quality Distribution** - Bar chart showing Excellent/Good/Fair/Poor breakdown
+6. **Validation Report** - Full text validation report with statistics
+
+#### Auto-Refresh
+
+- Data automatically refreshes every 60 seconds
+- Manual refresh button available in header
+- Last update timestamp displayed
+
+#### Responsive Design
+
+The dashboard is fully responsive:
+- **Desktop** (>960px): Two-column grid layout
+- **Tablet** (600-960px): Adaptive grid
+- **Mobile** (<600px): Single column stack
+
+### API Integration
+
+The frontend communicates with the backend via REST API:
+
+```javascript
+// Fetch summary statistics
+const response = await axios.get('http://localhost:8000/summary');
+
+// Fetch validation report
+const report = await axios.get('http://localhost:8000/validation-report');
+```
+
+### Development Notes
+
+**Backend Dependencies** (added to `requirements.txt`):
+- `fastapi>=0.109.0` - Modern API framework
+- `uvicorn>=0.27.0` - ASGI server
+
+**Frontend Dependencies** (package.json):
+- `axios` - HTTP client
+- `recharts` - Chart library
+- `@mui/material` - UI components
+- `@emotion/react` & `@emotion/styled` - Styling
+
+### Troubleshooting
+
+**Backend not starting?**
+```bash
+# Check if port 8000 is in use
+netstat -ano | findstr :8000  # Windows
+lsof -i :8000  # Linux/Mac
+
+# Try different port
+uvicorn src.analytics:app --reload --port 8001
+```
+
+**Frontend can't connect to backend?**
+- Ensure backend is running on port 8000
+- Check CORS configuration in `src/analytics.py`
+- Verify API_BASE_URL in `frontend/src/App.jsx`
+
+**Data not showing?**
+- Generate questions first: `python src/main.py --total-questions 100`
+- Ensure `output/questions.json` exists
+- Check browser console for errors
+
+### Screenshots
+
+```
+┌─────────────────────────────────────────────────────────┐
+│  Question Generator Dashboard                  🔄 Refresh │
+├─────────────────────────────────────────────────────────┤
+│  ┌─────────────────┐  ┌──────────────────────────────┐  │
+│  │ Total Questions │  │  Average Quality Score       │  │
+│  │      9,876      │  │         0.920                │  │
+│  └─────────────────┘  └──────────────────────────────┘  │
+│  ┌─────────────────────────────────────────────────────┐ │
+│  │  Category Distribution (Bar Chart)                  │ │
+│  │  [=======Geography=========]                        │ │
+│  │  [=======History===========]                        │ │
+│  │  [=======Culture===========]                        │ │
+│  │  [=======General===========]                        │ │
+│  └─────────────────────────────────────────────────────┘ │
+│  ┌──────────────────┐  ┌──────────────────────────────┐ │
+│  │ Difficulty Chart │  │  Quality Distribution        │ │
+│  │   (Pie Chart)    │  │    (Bar Chart)               │ │
+│  └──────────────────┘  └──────────────────────────────┘ │
+│  ┌─────────────────────────────────────────────────────┐ │
+│  │  Validation Report                                  │ │
+│  │  ═══════════════════════════════════════════════    │ │
+│  │  Total: 10,000 | Valid: 9,876 | Dropped: 124       │ │
+│  └─────────────────────────────────────────────────────┘ │
+├─────────────────────────────────────────────────────────┤
+│               Niguel Clark © 2025                        │
+└─────────────────────────────────────────────────────────┘
+```
+
 ## Project Structure
 
 ```
@@ -643,9 +900,23 @@ Questions-generator/
 │   ├── generator.py         # Claude AI question generation (Phase 3)
 │   ├── validator.py         # Question validation & filtering (Phase 4)
 │   ├── quality_scorer.py    # Quality scoring system (Phase 4)
+│   ├── analytics.py         # FastAPI analytics backend (Phase 5)
 │   └── utils/
 │       ├── __init__.py
 │       └── json_saver.py    # JSON validation & saving (Phase 3)
+├── frontend/                # React dashboard (Phase 5)
+│   ├── src/
+│   │   ├── components/
+│   │   │   ├── StatsCard.jsx
+│   │   │   ├── ChartCard.jsx
+│   │   │   └── ReportPanel.jsx
+│   │   ├── App.jsx
+│   │   ├── App.css
+│   │   ├── index.css
+│   │   └── main.jsx
+│   ├── package.json
+│   ├── vite.config.js
+│   └── index.html
 ├── books/                   # Place your PDF files here
 ├── output/                  # Generated questions & reports
 │   ├── questions.json       # Validated, scored questions

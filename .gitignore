@@ -46,3 +46,11 @@ output/*.json
 # Books (optional - uncomment if you don't want to track PDFs)
 # books/*.pdf
 
+# Frontend
+frontend/node_modules/
+frontend/dist/
+frontend/.vite/
+frontend/.env
+frontend/.env.local
+frontend/.env.*.local
+
