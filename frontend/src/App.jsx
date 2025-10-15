@@ -148,8 +148,12 @@ function App() {
       document.body.appendChild(link);
       link.click();
       link.remove();
+      
+      // Close modal after download
+      setShowCompletionModal(false);
     } catch (error) {
       console.error('Download error:', error);
+      alert('Failed to download file. Please try again.');
     }
   };
 
@@ -163,6 +167,8 @@ function App() {
       logs: [],
       error: null
     });
+    // Switch to Generate tab
+    setCurrentTab(1);
   };
 
   // Tab change handler

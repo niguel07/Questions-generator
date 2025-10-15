@@ -5,16 +5,33 @@ import DownloadIcon from '@mui/icons-material/Download';
 import RefreshIcon from '@mui/icons-material/Refresh';
 
 function CompletionModal({ open, onClose, totalQuestions, avgQuality, onDownload, onRestart }) {
+  const handleDownloadAndClose = () => {
+    onDownload();
+  };
+
+  const handleRestartAndClose = () => {
+    onRestart();
+  };
+
   return (
     <Dialog
       open={open}
       onClose={onClose}
       maxWidth="sm"
       fullWidth
+      disableEscapeKeyDown={false}
       PaperProps={{
         sx: {
           borderRadius: '16px',
           p: 2
+        }
+      }}
+      slotProps={{
+        backdrop: {
+          sx: {
+            backgroundColor: 'rgba(0, 0, 0, 0.5)',
+            cursor: 'pointer'
+          }
         }
       }}
     >
@@ -62,46 +79,51 @@ function CompletionModal({ open, onClose, totalQuestions, avgQuality, onDownload
           </Typography>
         </DialogContent>
 
-        <DialogActions sx={{ justifyContent: 'center', gap: 2, pb: 3, px: 3 }}>
-          <Button
-            variant="contained"
-            size="large"
-            startIcon={<DownloadIcon />}
-            onClick={onDownload}
-            sx={{
-              bgcolor: '#2563EB',
-              '&:hover': { bgcolor: '#1D4ED8' },
-              textTransform: 'none',
-              fontWeight: 600,
-              px: 4,
-              py: 1.5,
-              transition: 'all 0.2s'
-            }}
-          >
-            Download JSON
-          </Button>
-          <Button
-            variant="outlined"
-            size="large"
-            startIcon={<RefreshIcon />}
-            onClick={onRestart}
-            sx={{
-              borderColor: '#D1D5DB',
-              color: '#6B7280',
-              '&:hover': {
-                borderColor: '#2563EB',
-                bgcolor: '#EFF6FF',
-                color: '#2563EB'
-              },
-              textTransform: 'none',
-              fontWeight: 600,
-              px: 4,
-              py: 1.5,
-              transition: 'all 0.2s'
-            }}
-          >
-            Start New Session
-          </Button>
+        <DialogActions sx={{ justifyContent: 'center', gap: 2, pb: 2, px: 3, flexDirection: 'column' }}>
+          <Box sx={{ display: 'flex', gap: 2, flexWrap: 'wrap', justifyContent: 'center' }}>
+            <Button
+              variant="contained"
+              size="large"
+              startIcon={<DownloadIcon />}
+              onClick={handleDownloadAndClose}
+              sx={{
+                bgcolor: '#2563EB',
+                '&:hover': { bgcolor: '#1D4ED8' },
+                textTransform: 'none',
+                fontWeight: 600,
+                px: 4,
+                py: 1.5,
+                transition: 'all 0.2s'
+              }}
+            >
+              Download JSON
+            </Button>
+            <Button
+              variant="outlined"
+              size="large"
+              startIcon={<RefreshIcon />}
+              onClick={handleRestartAndClose}
+              sx={{
+                borderColor: '#D1D5DB',
+                color: '#6B7280',
+                '&:hover': {
+                  borderColor: '#2563EB',
+                  bgcolor: '#EFF6FF',
+                  color: '#2563EB'
+                },
+                textTransform: 'none',
+                fontWeight: 600,
+                px: 4,
+                py: 1.5,
+                transition: 'all 0.2s'
+              }}
+            >
+              Start New Session
+            </Button>
+          </Box>
+          <Typography variant="caption" sx={{ color: '#9CA3AF', mt: 1, textAlign: 'center' }}>
+            💡 Click outside or press ESC to close this dialog
+          </Typography>
         </DialogActions>
       </motion.div>
     </Dialog>
