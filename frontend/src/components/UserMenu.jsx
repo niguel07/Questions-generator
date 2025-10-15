@@ -10,7 +10,6 @@ import {
   DialogTitle,
   DialogContent,
   DialogActions,
-  TextField,
   Chip,
   Table,
   TableBody,
@@ -27,17 +26,31 @@ import HistoryIcon from '@mui/icons-material/History';
 import DownloadIcon from '@mui/icons-material/Download';
 import UploadIcon from '@mui/icons-material/Upload';
 import axios from 'axios';
+import AuthDialog from './AuthDialog';
 
 const API_BASE_URL = 'http://localhost:8000';
 
 function UserMenu() {
   const [anchorEl, setAnchorEl] = useState(null);
   const [user, setUser] = useState(null);
-  const [loginOpen, setLoginOpen] = useState(false);
+  const [authOpen, setAuthOpen] = useState(false);
   const [historyOpen, setHistoryOpen] = useState(false);
-  const [username, setUsername] = useState('');
   const [sessions, setSessions] = useState([]);
   const [stats, setStats] = useState(null);
+
+  // Check for existing session on mount
+  useEffect(() => {
+    const storedUser = localStorage.getItem('user');
+    if (storedUser) {
+      try {
+        setUser(JSON.parse(storedUser));
+        fetchUserStats(JSON.parse(storedUser).username);
+      } catch (e) {
+        localStorage.removeItem('user');
+        localStorage.removeItem('session_token');
+      }
+    }
+  }, []);
 
   const handleClick = (event) => {
     setAnchorEl(event.currentTarget);
@@ -47,29 +60,22 @@ function UserMenu() {
     setAnchorEl(null);
   };
 
-  const handleLogin = async () => {
-    if (!username.trim()) return;
-
-    try {
-      const response = await axios.post(`${API_BASE_URL}/login`, {
-        username: username.trim()
-      });
-
-      if (response.data.success) {
-        setUser(response.data.username);
-        setUsername('');
-        setLoginOpen(false);
-        fetchUserStats(response.data.username);
-      }
-    } catch (error) {
-      console.error('Login error:', error);
-      alert('Login failed');
-    }
+  const handleAuthSuccess = (userData) => {
+    setUser(userData);
+    fetchUserStats(userData.username);
   };
 
   const handleLogout = async () => {
     try {
-      await axios.post(`${API_BASE_URL}/logout`);
+      const sessionToken = localStorage.getItem('session_token');
+      if (sessionToken) {
+        await axios.post(`${API_BASE_URL}/auth/logout`, {
+          session_token: sessionToken
+        });
+      }
+      
+      localStorage.removeItem('user');
+      localStorage.removeItem('session_token');
       setUser(null);
       setStats(null);
       setSessions([]);
@@ -159,12 +165,12 @@ function UserMenu() {
               fontWeight: 600
             }}
           >
-            {user}
+            {user.username || user}
           </Button>
         ) : (
           <Button
             variant="contained"
-            onClick={() => setLoginOpen(true)}
+            onClick={() => setAuthOpen(true)}
             sx={{
               bgcolor: 'white',
               color: '#2563EB',
@@ -173,7 +179,7 @@ function UserMenu() {
               fontWeight: 600
             }}
           >
-            Login
+            Sign Up / Login
           </Button>
         )}
       </Box>
@@ -221,31 +227,12 @@ function UserMenu() {
         </MenuItem>
       </Menu>
 
-      {/* Login Dialog */}
-      <Dialog open={loginOpen} onClose={() => setLoginOpen(false)} maxWidth="xs" fullWidth>
-        <DialogTitle>Login</DialogTitle>
-        <DialogContent>
-          <Typography variant="body2" sx={{ color: '#6B7280', mb: 2 }}>
-            Enter your username to start tracking your generation history.
-          </Typography>
-          <TextField
-            autoFocus
-            fullWidth
-            label="Username"
-            value={username}
-            onChange={(e) => setUsername(e.target.value)}
-            onKeyPress={(e) => e.key === 'Enter' && handleLogin()}
-            variant="outlined"
-            sx={{ mt: 1 }}
-          />
-        </DialogContent>
-        <DialogActions>
-          <Button onClick={() => setLoginOpen(false)}>Cancel</Button>
-          <Button onClick={handleLogin} variant="contained" disabled={!username.trim()}>
-            Login
-          </Button>
-        </DialogActions>
-      </Dialog>
+      {/* Auth Dialog (Signup/Login) */}
+      <AuthDialog
+        open={authOpen}
+        onClose={() => setAuthOpen(false)}
+        onSuccess={handleAuthSuccess}
+      />
 
       {/* History Dialog */}
       <Dialog
@@ -260,7 +247,7 @@ function UserMenu() {
             Generation History
           </Typography>
           <Typography variant="body2" sx={{ color: '#6B7280', mt: 0.5 }}>
-            {user}'s generation sessions
+            {user?.username || user}'s generation sessions
           </Typography>
         </DialogTitle>
         <DialogContent>

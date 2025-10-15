@@ -21,6 +21,7 @@ import logging
 # Import our custom modules
 from reviewer import QuestionReviewer
 from users import UserManager
+from auth import AuthManager
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -33,12 +34,16 @@ app = FastAPI(
     version="3.0.0"
 )
 
-# CORS configuration
+# CORS configuration - Allow all local ports for development
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[
         "http://localhost:5173",
         "http://127.0.0.1:5173",
+        "http://localhost:5174",
+        "http://127.0.0.1:5174",
+        "http://localhost:5175",
+        "http://127.0.0.1:5175",
         "http://localhost:8000",
         "http://127.0.0.1:8000",
     ],
@@ -55,6 +60,7 @@ BOOKS_DIR = Path("books")
 # Initialize managers
 reviewer = QuestionReviewer()
 user_manager = UserManager()
+auth_manager = AuthManager()
 
 # Global state
 generation_state = {
@@ -100,9 +106,21 @@ class QuestionUpdate(BaseModel):
     category: Optional[str] = None
     difficulty: Optional[str] = None
 
+class SignupRequest(BaseModel):
+    """Request model for user signup."""
+    username: str
+    email: str
+    password: str
+    full_name: Optional[str] = None
+
 class LoginRequest(BaseModel):
     """Request model for user login."""
-    username: str
+    username_or_email: str
+    password: str
+
+class SessionVerifyRequest(BaseModel):
+    """Request model for session verification."""
+    session_token: str
 
 
 # ============================================================================
@@ -513,20 +531,77 @@ async def update_question(question_id: int, update: QuestionUpdate):
 
 
 # ============================================================================
-# USER MANAGEMENT ENDPOINTS (Phase 9)
+# AUTHENTICATION ENDPOINTS (Enhanced Phase 9)
 # ============================================================================
 
-@app.post("/login")
+@app.post("/auth/signup")
+async def signup(request: SignupRequest):
+    """Register a new user account."""
+    try:
+        result = auth_manager.signup(
+            username=request.username,
+            email=request.email,
+            password=request.password,
+            full_name=request.full_name
+        )
+        
+        if result["success"]:
+            current_session["user"] = request.username
+            # Create user profile in user_manager
+            user_manager.login(request.username)
+        
+        return JSONResponse(content=result)
+    except Exception as e:
+        logger.error(f"Signup error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/auth/login")
 async def login(request: LoginRequest):
-    """Login or create a user."""
-    result = user_manager.login(request.username)
-    if result["success"]:
-        current_session["user"] = request.username
+    """Authenticate user and create session."""
+    try:
+        result = auth_manager.login(
+            username_or_email=request.username_or_email,
+            password=request.password
+        )
+        
+        if result["success"]:
+            current_session["user"] = result["user"]["username"]
+            # Ensure user profile exists
+            user_manager.login(result["user"]["username"])
+        
+        return JSONResponse(content=result)
+    except Exception as e:
+        logger.error(f"Login error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/auth/verify")
+async def verify_session(request: SessionVerifyRequest):
+    """Verify if session token is valid."""
+    result = auth_manager.verify_session(request.session_token)
     return JSONResponse(content=result)
 
+@app.post("/auth/logout")
+async def logout(request: SessionVerifyRequest):
+    """Logout user and invalidate session."""
+    result = auth_manager.logout(request.session_token)
+    current_session["user"] = None
+    return JSONResponse(content=result)
+
+# Legacy endpoints for backward compatibility
+@app.post("/login")
+async def legacy_login(request: dict):
+    """Legacy login endpoint - redirects to new auth."""
+    if "username" in request:
+        # Old simple login
+        result = user_manager.login(request["username"])
+        if result["success"]:
+            current_session["user"] = request["username"]
+        return JSONResponse(content=result)
+    return JSONResponse(content={"success": False, "error": "Invalid request"})
+
 @app.post("/logout")
-async def logout():
-    """Logout current user."""
+async def legacy_logout():
+    """Legacy logout endpoint."""
     current_session["user"] = None
     return JSONResponse(content={"success": True, "message": "Logged out successfully"})
 
