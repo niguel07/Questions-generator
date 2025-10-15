@@ -13,6 +13,8 @@ from dotenv import load_dotenv
 from parser import parse_books, extract_text_from_pdfs
 from chunker import split_into_chunks, chunk_text, get_chunk_info
 from generator import QuestionGenerator
+from validator import validate_questions
+from quality_scorer import score_all_questions
 from utils.json_saver import save_questions, save_questions_to_json, get_question_stats
 import time
 
@@ -152,18 +154,36 @@ def generate(
         
         print()
         
-        # Step 4: Save questions (Phase 3 Enhanced)
+        # Step 4: Validate questions (Phase 4)
+        validated_questions = validate_questions(questions)
+        
+        if not validated_questions:
+            typer.secho(
+                "\n[ERROR] No valid questions after validation. Please check the validation report.",
+                fg=typer.colors.RED,
+                bold=True
+            )
+            raise typer.Exit(code=1)
+        
+        print()
+        
+        # Step 5: Score questions (Phase 4)
+        scored_questions = score_all_questions(validated_questions, sort_by_quality=True)
+        
+        print()
+        
+        # Step 6: Save questions (Phase 3 & 4 Enhanced)
         print("=" * 70)
-        print("STEP 4: Saving questions to file")
+        print("STEP 6: Saving validated and scored questions")
         print("=" * 70)
-        save_stats = save_questions_to_json(questions, output_file)
+        save_stats = save_questions_to_json(scored_questions, output_file)
         
         # Display statistics
         print()
         print("=" * 70)
         print("STATISTICS")
         print("=" * 70)
-        stats = get_question_stats(questions)
+        stats = get_question_stats(scored_questions)
         
         print(f"\nTotal Questions: {stats['total']}")
         
@@ -192,10 +212,14 @@ def generate(
             minutes = int((overall_duration % 3600) // 60)
             duration_str = f"{hours}h {minutes}m"
         
+        # Calculate average quality score
+        quality_scores = [q.get("quality_score", 0.0) for q in scored_questions]
+        avg_quality = sum(quality_scores) / len(quality_scores) if quality_scores else 0.0
+        
         print()
         print("=" * 70)
         typer.secho(
-            f"[SUCCESS] Generated {len(questions):,} questions in {duration_str} for topic \"{topic}\"",
+            f"[SUCCESS] Generated {len(scored_questions):,} questions in {duration_str} for topic \"{topic}\"",
             fg=typer.colors.GREEN,
             bold=True
         )
@@ -203,9 +227,18 @@ def generate(
         print()
         print("FINAL SUMMARY:")
         print(f"  Total execution time: {duration_str}")
-        print(f"  Questions generated: {len(questions):,}/{total_questions:,}")
+        print(f"  Questions generated: {len(questions):,}")
+        print(f"  Questions validated: {len(validated_questions):,}")
+        print(f"  Questions retained: {len(scored_questions):,}/{total_questions:,}")
+        print(f"  Average quality score: {avg_quality:.3f}")
         print(f"  Output file: {output_file}")
         print(f"  File size: {save_stats['file_size_bytes'] / 1024:.1f} KB")
+        print()
+        print("OUTPUT FILES:")
+        print(f"  Questions: {output_file}")
+        print(f"  Validation report: output/validation_report.txt")
+        if gen_stats.get('chunks_failed', 0) > 0:
+            print(f"  Error log: output/errors.log")
         print("=" * 70)
         
     except KeyboardInterrupt:
