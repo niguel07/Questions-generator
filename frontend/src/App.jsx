@@ -26,6 +26,7 @@ function App() {
   // Generation state
   const [currentTab, setCurrentTab] = useState(0);
   const [isGenerating, setIsGenerating] = useState(false);
+  const [uploadedFiles, setUploadedFiles] = useState([]);
   const [progress, setProgress] = useState({
     status: 'idle',
     progress: 0,
@@ -92,10 +93,21 @@ function App() {
     }
   };
 
+  // Fetch uploaded files
+  const fetchUploadedFiles = async () => {
+    try {
+      const response = await axios.get(`${API_BASE_URL}/files`);
+      setUploadedFiles(response.data.files || []);
+    } catch (err) {
+      console.error('Error fetching files:', err);
+    }
+  };
+
   // Handle file upload
   const handleFilesUploaded = (result) => {
     if (result.uploaded && result.uploaded.length > 0) {
       alert(`Successfully uploaded ${result.uploaded.length} file(s)!`);
+      fetchUploadedFiles(); // Refresh file list
     }
     if (result.errors && result.errors.length > 0) {
       alert(`Errors: ${result.errors.join(', ')}`);
@@ -164,6 +176,8 @@ function App() {
       fetchDashboardData();
       const interval = setInterval(fetchDashboardData, 60000); // Refresh every 60 seconds
       return () => clearInterval(interval);
+    } else if (currentTab === 1) {
+      fetchUploadedFiles(); // Fetch uploaded files when on generate tab
     }
   }, [currentTab]);
 
@@ -315,7 +329,11 @@ function App() {
 
               {/* Configuration Section */}
               <Box mb={3}>
-                <ConfigForm onGenerate={handleGenerate} isGenerating={isGenerating} />
+                <ConfigForm 
+                  onGenerate={handleGenerate} 
+                  isGenerating={isGenerating} 
+                  hasUploadedFiles={uploadedFiles.length > 0}
+                />
               </Box>
 
               {/* Progress Section */}

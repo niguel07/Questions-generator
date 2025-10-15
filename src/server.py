@@ -219,6 +219,7 @@ async def run_generation_process(topics: List[str], total_questions: int, userna
             # Build command for this topic
             cmd = [
                 "python", "src/main.py",
+                "generate",  # Add the Typer command
                 "--input-dir", "books",
                 "--output-file", f"output/questions_{topic.replace(' ', '_')}.json",
                 "--topic", topic,

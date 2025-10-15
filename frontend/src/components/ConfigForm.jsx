@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { Card, CardContent, Typography, TextField, Slider, Box, Button, Chip } from '@mui/material';
 import { motion } from 'framer-motion';
 
-function ConfigForm({ onGenerate, isGenerating }) {
+function ConfigForm({ onGenerate, isGenerating, hasUploadedFiles = false }) {
   const [topicInput, setTopicInput] = useState('');
   const [topics, setTopics] = useState([]);
   const [totalQuestions, setTotalQuestions] = useState(1000);
@@ -155,15 +155,15 @@ function ConfigForm({ onGenerate, isGenerating }) {
 
         {/* Generate Button */}
         <motion.div
-          whileHover={{ scale: isGenerating || topics.length === 0 ? 1 : 1.02 }}
-          whileTap={{ scale: isGenerating || topics.length === 0 ? 1 : 0.98 }}
+          whileHover={{ scale: isGenerating || topics.length === 0 || !hasUploadedFiles ? 1 : 1.02 }}
+          whileTap={{ scale: isGenerating || topics.length === 0 || !hasUploadedFiles ? 1 : 0.98 }}
         >
           <Button
             fullWidth
             variant="contained"
             size="large"
             onClick={handleGenerate}
-            disabled={isGenerating || topics.length === 0}
+            disabled={isGenerating || topics.length === 0 || !hasUploadedFiles}
             sx={{
               bgcolor: '#2563EB',
               '&:hover': { bgcolor: '#1D4ED8' },
@@ -179,9 +179,21 @@ function ConfigForm({ onGenerate, isGenerating }) {
         </motion.div>
 
         {/* Info Text */}
-        <Typography variant="caption" sx={{ color: '#9CA3AF', mt: 2, display: 'block', textAlign: 'center' }}>
-          Estimated time: {Math.ceil(totalQuestions / 300)} - {Math.ceil(totalQuestions / 150)} minutes
-        </Typography>
+        {!hasUploadedFiles && (
+          <Typography variant="caption" sx={{ color: '#EF4444', mt: 2, display: 'block', textAlign: 'center' }}>
+            ⚠️ Please upload PDF files before generating questions
+          </Typography>
+        )}
+        {hasUploadedFiles && topics.length === 0 && (
+          <Typography variant="caption" sx={{ color: '#EF4444', mt: 2, display: 'block', textAlign: 'center' }}>
+            ⚠️ Please add at least one topic
+          </Typography>
+        )}
+        {hasUploadedFiles && topics.length > 0 && (
+          <Typography variant="caption" sx={{ color: '#9CA3AF', mt: 2, display: 'block', textAlign: 'center' }}>
+            Estimated time: {Math.ceil(totalQuestions / 300)} - {Math.ceil(totalQuestions / 150)} minutes
+          </Typography>
+        )}
       </CardContent>
     </Card>
   );
