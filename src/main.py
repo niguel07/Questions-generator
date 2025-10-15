@@ -13,7 +13,10 @@ from dotenv import load_dotenv
 from parser import parse_books, extract_text_from_pdfs
 from chunker import split_into_chunks, chunk_text, get_chunk_info
 from generator import QuestionGenerator
-from utils.json_saver import save_questions, get_question_stats
+from validator import validate_questions
+from quality_scorer import score_all_questions
+from utils.json_saver import save_questions, save_questions_to_json, get_question_stats
+import time
 
 
 # Load environment variables
@@ -88,6 +91,9 @@ def generate(
     print()
     
     try:
+        # Start overall timer
+        overall_start_time = time.time()
+        
         # Step 1: Parse PDFs (Phase 2 Enhanced)
         print("=" * 70)
         print("PHASE 2: TEXT EXTRACTION & PREPROCESSING")
@@ -134,17 +140,13 @@ def generate(
         print("=" * 70)
         print()
         
-        # Step 3: Generate questions
-        print("=" * 70)
-        print("STEP 3: Generating questions with Claude AI")
-        print("=" * 70)
-        
+        # Step 3: Generate questions (Phase 3 Enhanced)
         generator = QuestionGenerator()
-        questions = generator.generate_questions(chunks, topic, total_questions)
+        questions, gen_stats = generator.generate_questions(chunks, topic, total_questions)
         
         if not questions:
             typer.secho(
-                "[ERROR] No questions generated. Please check your API key and try again.",
+                "\n[ERROR] No questions generated. Please check your API key and try again.",
                 fg=typer.colors.RED,
                 bold=True
             )
@@ -152,18 +154,36 @@ def generate(
         
         print()
         
-        # Step 4: Save questions
+        # Step 4: Validate questions (Phase 4)
+        validated_questions = validate_questions(questions)
+        
+        if not validated_questions:
+            typer.secho(
+                "\n[ERROR] No valid questions after validation. Please check the validation report.",
+                fg=typer.colors.RED,
+                bold=True
+            )
+            raise typer.Exit(code=1)
+        
+        print()
+        
+        # Step 5: Score questions (Phase 4)
+        scored_questions = score_all_questions(validated_questions, sort_by_quality=True)
+        
+        print()
+        
+        # Step 6: Save questions (Phase 3 & 4 Enhanced)
         print("=" * 70)
-        print("STEP 4: Saving questions to file")
+        print("STEP 6: Saving validated and scored questions")
         print("=" * 70)
-        save_questions(questions, output_file)
+        save_stats = save_questions_to_json(scored_questions, output_file)
         
         # Display statistics
         print()
         print("=" * 70)
         print("STATISTICS")
         print("=" * 70)
-        stats = get_question_stats(questions)
+        stats = get_question_stats(scored_questions)
         
         print(f"\nTotal Questions: {stats['total']}")
         
@@ -177,13 +197,48 @@ def generate(
             percentage = (count / stats['total']) * 100
             print(f"  {difficulty}: {count} ({percentage:.1f}%)")
         
+        # Calculate total execution time
+        overall_duration = time.time() - overall_start_time
+        
+        # Format duration
+        if overall_duration < 60:
+            duration_str = f"{overall_duration:.0f}s"
+        elif overall_duration < 3600:
+            minutes = int(overall_duration // 60)
+            secs = int(overall_duration % 60)
+            duration_str = f"{minutes}m {secs}s"
+        else:
+            hours = int(overall_duration // 3600)
+            minutes = int((overall_duration % 3600) // 60)
+            duration_str = f"{hours}h {minutes}m"
+        
+        # Calculate average quality score
+        quality_scores = [q.get("quality_score", 0.0) for q in scored_questions]
+        avg_quality = sum(quality_scores) / len(quality_scores) if quality_scores else 0.0
+        
         print()
         print("=" * 70)
         typer.secho(
-            "[SUCCESS] Question Generator completed successfully!",
+            f"[SUCCESS] Generated {len(scored_questions):,} questions in {duration_str} for topic \"{topic}\"",
             fg=typer.colors.GREEN,
             bold=True
         )
+        print("=" * 70)
+        print()
+        print("FINAL SUMMARY:")
+        print(f"  Total execution time: {duration_str}")
+        print(f"  Questions generated: {len(questions):,}")
+        print(f"  Questions validated: {len(validated_questions):,}")
+        print(f"  Questions retained: {len(scored_questions):,}/{total_questions:,}")
+        print(f"  Average quality score: {avg_quality:.3f}")
+        print(f"  Output file: {output_file}")
+        print(f"  File size: {save_stats['file_size_bytes'] / 1024:.1f} KB")
+        print()
+        print("OUTPUT FILES:")
+        print(f"  Questions: {output_file}")
+        print(f"  Validation report: output/validation_report.txt")
+        if gen_stats.get('chunks_failed', 0) > 0:
+            print(f"  Error log: output/errors.log")
         print("=" * 70)
         
     except KeyboardInterrupt:

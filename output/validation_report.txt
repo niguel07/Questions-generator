@@ -1,0 +1,34 @@
+
+======================================================================
+QUESTION VALIDATION REPORT
+======================================================================
+Generated: 2025-10-15 11:56:46
+
+SUMMARY:
+  Total input questions: 3
+  Valid questions retained: 1
+  Questions dropped: 2
+  Success rate: 33.3%
+
+DROPPED QUESTIONS BREAKDOWN:
+  - Missing required keys: 0
+  - Invalid question length: 1
+  - Invalid options structure: 0
+  - Invalid/unfixable answer: 0
+  - Duplicate questions: 1
+  - Factual/formatting issues: 0
+
+AUTO-CORRECTIONS:
+  - Answers auto-corrected: 0
+
+VALIDATION CHECKS PERFORMED:
+  ✓ Schema validation (required fields)
+  ✓ Question length (20-300 characters)
+  ✓ Options integrity (4 unique options)
+  ✓ Answer matching with auto-correction
+  ✓ Duplicate detection (85% similarity threshold)
+  ✓ Category normalization (title case)
+  ✓ Difficulty normalization (Easy/Medium/Hard)
+  ✓ Factual content checks
+
+======================================================================
