@@ -1,6 +1,6 @@
-# Question Generator AI - Phase 1
+# Question Generator AI - Phases 1 & 2
 
-An intelligent question generator that creates multiple-choice questions from PDF documents using Claude AI (Anthropic).
+An intelligent question generator that creates multiple-choice questions from PDF documents using Claude AI (Anthropic). Features advanced text extraction, preprocessing, and AI-powered question generation.
 
 ## Features
 
@@ -91,14 +91,108 @@ Options:
   python src/main.py init
   ```
 
+## Phase 2 – Text Extraction and Chunking
+
+Phase 2 implements a robust preprocessing pipeline that prepares book text for Claude API processing:
+
+### Text Extraction (`src/parser.py`)
+
+The parser module handles PDF processing with production-level features:
+
+- **File Size Validation**: Automatically skips PDFs larger than 50 MB to prevent memory issues
+- **Page-by-Page Processing**: Extracts and cleans text from each page individually
+- **Header/Footer Removal**: Intelligently removes:
+  - Page numbers (standalone or "Page X" format)
+  - Copyright notices and symbols (©, "All Rights Reserved")
+  - Chapter/Section headers
+  - Excessive whitespace and line breaks
+- **Error Handling**: Gracefully handles corrupted pages and files
+- **UTF-8 Encoding**: Ensures proper text encoding for international characters
+- **Progress Tracking**: Shows real-time progress with file and page counts
+- **Statistics**: Reports files processed, pages extracted, word count, and character count
+
+### Text Chunking (`src/chunker.py`)
+
+The chunker module splits large texts into Claude-optimized segments:
+
+- **Word-Level Chunking**: Splits text into ~1000-word chunks (configurable)
+- **Overlap Strategy**: 100-word overlap between chunks maintains sentence continuity
+- **Context Preservation**: Ensures Claude receives complete, coherent text segments
+- **Adaptive Processing**: Handles texts of any size, from single pages to entire books
+- **Validation**: Checks for empty text and invalid overlap settings
+- **Detailed Statistics**: Tracks chunk count, word distribution, and size metrics
+
+### How It Works
+
+```
+1. PDF Files (books/) 
+   ↓
+2. Extract & Clean (parser.py)
+   - Remove headers/footers
+   - Clean whitespace
+   - Validate file sizes
+   ↓
+3. Split into Chunks (chunker.py)
+   - ~1000 words per chunk
+   - 100-word overlap
+   - Maintain context
+   ↓
+4. Ready for Claude API
+   - Optimized segments
+   - Complete sentences
+   - Balanced distribution
+```
+
+### Example Output
+
+When running the generator, Phase 2 preprocessing displays:
+
+```
+======================================================================
+PHASE 2: TEXT EXTRACTION & PREPROCESSING
+======================================================================
+
+STEP 1: Extracting and cleaning PDF text
+----------------------------------------------------------------------
+[INFO] Found 3 PDF file(s) to process
+Reading PDFs: 100%|████████████████████| 3/3 [00:05<00:00]
+
+----------------------------------------------------------------------
+[SUCCESS] Text extraction complete
+  Files processed: 3/3
+  Total pages: 185
+  Total characters: 524,832
+  Total words: 87,472
+
+======================================================================
+STEP 2: Chunking text for Claude API processing
+----------------------------------------------------------------------
+
+[SUCCESS] Text chunking complete
+  Total chunks created: 98
+  Chunk size: 1000 words
+  Overlap: 100 words
+  Source text: 87,472 words
+
+======================================================================
+PREPROCESSING SUMMARY
+======================================================================
+Extracted 185 pages -> 98 text chunks ready for Claude generation
+  Source: 3 PDF file(s)
+  Total words: 87,472
+  Chunks created: 98
+  Avg words/chunk: 892
+======================================================================
+```
+
 ## Project Structure
 
 ```
 Questions-generator/
 ├── src/
 │   ├── main.py              # CLI application entry point
-│   ├── parser.py            # PDF text extraction and cleaning
-│   ├── chunker.py           # Text chunking for AI processing
+│   ├── parser.py            # PDF text extraction & cleaning (Phase 2)
+│   ├── chunker.py           # Text chunking for AI processing (Phase 2)
 │   ├── generator.py         # Claude AI integration
 │   └── utils/
 │       ├── __init__.py

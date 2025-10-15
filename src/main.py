@@ -10,8 +10,8 @@ from typing import Optional
 from dotenv import load_dotenv
 
 # Import our modules
-from parser import parse_books
-from chunker import split_into_chunks
+from parser import parse_books, extract_text_from_pdfs
+from chunker import split_into_chunks, chunk_text, get_chunk_info
 from generator import QuestionGenerator
 from utils.json_saver import save_questions, get_question_stats
 
@@ -88,15 +88,18 @@ def generate(
     print()
     
     try:
-        # Step 1: Parse PDFs
+        # Step 1: Parse PDFs (Phase 2 Enhanced)
         print("=" * 70)
-        print("STEP 1: Parsing PDF files")
+        print("PHASE 2: TEXT EXTRACTION & PREPROCESSING")
         print("=" * 70)
-        combined_text = parse_books(input_dir)
+        print("\nSTEP 1: Extracting and cleaning PDF text")
+        print("-" * 70)
+        
+        combined_text, extraction_stats = extract_text_from_pdfs(input_dir)
         
         if not combined_text:
             typer.secho(
-                "[ERROR] No text extracted from PDFs. Please check your input directory.",
+                "\n[ERROR] No text extracted from PDFs. Please check your input directory.",
                 fg=typer.colors.RED,
                 bold=True
             )
@@ -104,20 +107,31 @@ def generate(
         
         print()
         
-        # Step 2: Split into chunks
+        # Step 2: Split into chunks (Phase 2 Enhanced)
         print("=" * 70)
-        print("STEP 2: Splitting text into chunks")
-        print("=" * 70)
-        chunks = split_into_chunks(combined_text, chunk_size, overlap)
+        print("STEP 2: Chunking text for Claude API processing")
+        print("-" * 70)
+        
+        chunks = chunk_text(combined_text, chunk_size, overlap)
         
         if not chunks:
             typer.secho(
-                "[ERROR] Failed to create text chunks.",
+                "\n[ERROR] Failed to create text chunks.",
                 fg=typer.colors.RED,
                 bold=True
             )
             raise typer.Exit(code=1)
         
+        # Display preprocessing summary
+        print("\n" + "=" * 70)
+        print("PREPROCESSING SUMMARY")
+        print("=" * 70)
+        print(f"Extracted {extraction_stats['total_pages']:,} pages -> {len(chunks)} text chunks ready for Claude generation")
+        print(f"  Source: {extraction_stats['files_processed']} PDF file(s)")
+        print(f"  Total words: {extraction_stats['total_words']:,}")
+        print(f"  Chunks created: {len(chunks)}")
+        print(f"  Avg words/chunk: {extraction_stats['total_words'] // len(chunks):,}")
+        print("=" * 70)
         print()
         
         # Step 3: Generate questions
