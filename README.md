@@ -185,20 +185,195 @@ Extracted 185 pages -> 98 text chunks ready for Claude generation
 ======================================================================
 ```
 
+## Phase 3 – Question Generation Engine
+
+Phase 3 implements the core Claude AI integration for generating high-quality multiple-choice questions with robust error handling and comprehensive logging.
+
+### Question Generation (`src/generator.py`)
+
+The generator module leverages Claude 3.5 Sonnet to create structured questions from preprocessed text chunks:
+
+#### Core Features
+
+- **Claude API Integration**: Uses Anthropic's Claude 3.5 Sonnet model
+- **Dynamic Question Distribution**: Calculates optimal questions per chunk based on total target
+- **Category Balancing**: For Cameroon topic, enforces 25% distribution across 4 categories
+- **Robust Retry Logic**: Attempts up to 3 retries with exponential backoff for failed API calls
+- **Rate Limiting**: 2-second delay between API calls to prevent rate limit errors
+- **Error Logging**: Failed chunks logged to `output/errors.log` with timestamps and details
+- **Progress Tracking**: Real-time progress bars showing chunk processing status
+- **Comprehensive Statistics**: Tracks API calls, success rates, duration, and failures
+
+#### How It Works
+
+1. **Initialization**
+   - Loads Claude API key from `.env`
+   - Initializes error logging system
+   - Prepares statistics tracking
+
+2. **Question Generation Loop**
+   ```
+   For each text chunk:
+   1. Create structured prompt with category requirements
+   2. Send to Claude API with retry logic
+   3. Parse and validate JSON response
+   4. Log any errors to errors.log
+   5. Wait 2 seconds before next request (rate limiting)
+   6. Continue until target question count reached
+   ```
+
+3. **Validation**
+   - Each question must have: question, options (A-D), answer, category, difficulty, explanation
+   - Invalid questions are filtered out automatically
+   - Validation errors logged for debugging
+
+4. **Category Distribution (Cameroon)**
+   When topic is "Cameroon", the system enforces balanced categories:
+   - **Geography 25%**: Landmarks, regions, climate, natural resources
+   - **History 25%**: Historical events, independence, colonial period, leaders
+   - **Culture 25%**: Traditions, languages, festivals, food, customs
+   - **General Knowledge 25%**: Economy, politics, sports, notable figures
+
+### JSON Output (`src/utils/json_saver.py`)
+
+Enhanced JSON saver with validation ensures data integrity:
+
+- **Structure Validation**: Verifies all required fields before saving
+- **UTF-8 Encoding**: Properly handles international characters
+- **File Statistics**: Reports saved count, file size, and location
+- **Error Recovery**: Skips invalid questions with warnings
+
+### Execution Time & Performance
+
+The system tracks and reports comprehensive performance metrics:
+
+- **Duration Tracking**: Measures total execution time from start to finish
+- **Questions/Second**: Calculates generation rate
+- **API Statistics**: Total calls, successful calls, failed chunks
+- **Success Rate**: Percentage of target questions successfully generated
+
+### Example Generation Output
+
+```bash
+$ python src/main.py --input-dir books --topic "Cameroon" --total-questions 1000
+
+======================================================================
+PHASE 2: TEXT EXTRACTION & PREPROCESSING
+======================================================================
+[SUCCESS] Text extraction complete
+  Total pages: 185
+  Total words: 87,472
+
+======================================================================
+CLAUDE QUESTION GENERATION ENGINE - PHASE 3
+======================================================================
+Target: 1,000 questions from 98 chunks
+Strategy: ~10 questions per chunk
+Topic: Cameroon
+Category Balance: Geography 25%, History 25%, Culture 25%, General 25%
+======================================================================
+
+Generating questions: 100%|████████████| 98/98 [03:16<00:00, 2.00s/chunk]
+
+======================================================================
+GENERATION COMPLETE
+======================================================================
+[SUCCESS] Generated 1,000 questions
+  Target: 1,000
+  Success rate: 100.0%
+  Duration: 3m 16s
+======================================================================
+
+[SUCCESS] Successfully generated 1,000 questions saved to output/questions.json
+  File size: 524,832 bytes (512.5 KB)
+
+======================================================================
+[SUCCESS] Generated 1,000 questions in 3m 32s for topic "Cameroon"
+======================================================================
+
+FINAL SUMMARY:
+  Total execution time: 3m 32s
+  Questions generated: 1,000/1,000
+  Output file: output/questions.json
+  File size: 512.5 KB
+======================================================================
+```
+
+### Scaling Considerations
+
+The system is designed to handle question generation from 100 to 10,000 questions:
+
+| Question Count | Estimated Time* | API Calls | Estimated Cost** |
+|----------------|-----------------|-----------|------------------|
+| 100            | 30s - 1m        | ~10       | ~$0.10          |
+| 500            | 2m - 5m         | ~50       | ~$0.50          |
+| 1,000          | 3m - 8m         | ~100      | ~$1.00          |
+| 5,000          | 15m - 40m       | ~500      | ~$5.00          |
+| 10,000         | 30m - 1h 20m    | ~1000     | ~$10.00         |
+
+*Time estimates include 2-second rate limiting between requests  
+**Cost estimates based on Claude 3.5 Sonnet pricing (may vary)
+
+### Error Handling
+
+The system implements multiple layers of error handling:
+
+1. **API Timeouts**: Automatic retry with exponential backoff (1s, 2s, 4s)
+2. **JSON Parse Errors**: Attempts to extract JSON from markdown-wrapped responses
+3. **Invalid Questions**: Filtered out with validation warnings
+4. **Failed Chunks**: Logged to `output/errors.log` with full details
+5. **Rate Limits**: 2-second delays prevent hitting API limits
+
+### Error Log Format
+
+When errors occur, they're logged to `output/errors.log`:
+
+```
+[2025-10-15 11:30:45] API_ERROR
+Chunk Index: 23
+Error: API call failed: Connection timeout
+Chunk Preview: Cameroon's economic landscape has evolved significantly...
+----------------------------------------------------------------------
+```
+
+### Adjusting Question Count & Topics
+
+**Change Question Count:**
+```bash
+# Generate 100 questions (minimum)
+python src/main.py --total-questions 100
+
+# Generate 10,000 questions (maximum)
+python src/main.py --total-questions 10000
+```
+
+**Change Topic:**
+```bash
+# Generate questions about Python programming
+python src/main.py --topic "Python Programming" --total-questions 500
+
+# Generate questions about World History
+python src/main.py --topic "World History" --total-questions 2000
+```
+
+**Note**: Only the "Cameroon" topic uses the predefined 25% category distribution. Other topics use adaptive categories based on content.
+
 ## Project Structure
 
 ```
 Questions-generator/
 ├── src/
-│   ├── main.py              # CLI application entry point
+│   ├── main.py              # CLI application entry point (Phases 1-3)
 │   ├── parser.py            # PDF text extraction & cleaning (Phase 2)
 │   ├── chunker.py           # Text chunking for AI processing (Phase 2)
-│   ├── generator.py         # Claude AI integration
+│   ├── generator.py         # Claude AI question generation (Phase 3)
 │   └── utils/
 │       ├── __init__.py
-│       └── json_saver.py    # JSON file handling
+│       └── json_saver.py    # JSON validation & saving (Phase 3)
 ├── books/                   # Place your PDF files here
-├── output/                  # Generated questions saved here
+├── output/                  # Generated questions & error logs
+│   ├── questions.json       # Generated questions output
+│   └── errors.log           # Error log (created if issues occur)
 ├── .env                     # API keys (create this)
 ├── .gitignore
 ├── requirements.txt

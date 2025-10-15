@@ -13,7 +13,8 @@ from dotenv import load_dotenv
 from parser import parse_books, extract_text_from_pdfs
 from chunker import split_into_chunks, chunk_text, get_chunk_info
 from generator import QuestionGenerator
-from utils.json_saver import save_questions, get_question_stats
+from utils.json_saver import save_questions, save_questions_to_json, get_question_stats
+import time
 
 
 # Load environment variables
@@ -88,6 +89,9 @@ def generate(
     print()
     
     try:
+        # Start overall timer
+        overall_start_time = time.time()
+        
         # Step 1: Parse PDFs (Phase 2 Enhanced)
         print("=" * 70)
         print("PHASE 2: TEXT EXTRACTION & PREPROCESSING")
@@ -134,17 +138,13 @@ def generate(
         print("=" * 70)
         print()
         
-        # Step 3: Generate questions
-        print("=" * 70)
-        print("STEP 3: Generating questions with Claude AI")
-        print("=" * 70)
-        
+        # Step 3: Generate questions (Phase 3 Enhanced)
         generator = QuestionGenerator()
-        questions = generator.generate_questions(chunks, topic, total_questions)
+        questions, gen_stats = generator.generate_questions(chunks, topic, total_questions)
         
         if not questions:
             typer.secho(
-                "[ERROR] No questions generated. Please check your API key and try again.",
+                "\n[ERROR] No questions generated. Please check your API key and try again.",
                 fg=typer.colors.RED,
                 bold=True
             )
@@ -152,11 +152,11 @@ def generate(
         
         print()
         
-        # Step 4: Save questions
+        # Step 4: Save questions (Phase 3 Enhanced)
         print("=" * 70)
         print("STEP 4: Saving questions to file")
         print("=" * 70)
-        save_questions(questions, output_file)
+        save_stats = save_questions_to_json(questions, output_file)
         
         # Display statistics
         print()
@@ -177,13 +177,35 @@ def generate(
             percentage = (count / stats['total']) * 100
             print(f"  {difficulty}: {count} ({percentage:.1f}%)")
         
+        # Calculate total execution time
+        overall_duration = time.time() - overall_start_time
+        
+        # Format duration
+        if overall_duration < 60:
+            duration_str = f"{overall_duration:.0f}s"
+        elif overall_duration < 3600:
+            minutes = int(overall_duration // 60)
+            secs = int(overall_duration % 60)
+            duration_str = f"{minutes}m {secs}s"
+        else:
+            hours = int(overall_duration // 3600)
+            minutes = int((overall_duration % 3600) // 60)
+            duration_str = f"{hours}h {minutes}m"
+        
         print()
         print("=" * 70)
         typer.secho(
-            "[SUCCESS] Question Generator completed successfully!",
+            f"[SUCCESS] Generated {len(questions):,} questions in {duration_str} for topic \"{topic}\"",
             fg=typer.colors.GREEN,
             bold=True
         )
+        print("=" * 70)
+        print()
+        print("FINAL SUMMARY:")
+        print(f"  Total execution time: {duration_str}")
+        print(f"  Questions generated: {len(questions):,}/{total_questions:,}")
+        print(f"  Output file: {output_file}")
+        print(f"  File size: {save_stats['file_size_bytes'] / 1024:.1f} KB")
         print("=" * 70)
         
     except KeyboardInterrupt:
