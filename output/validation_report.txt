@@ -2,17 +2,17 @@
 ======================================================================
 QUESTION VALIDATION REPORT
 ======================================================================
-Generated: 2025-10-15 11:56:46
+Generated: 2025-10-15 13:39:15
 
 SUMMARY:
-  Total input questions: 3
-  Valid questions retained: 1
-  Questions dropped: 2
-  Success rate: 33.3%
+  Total input questions: 100
+  Valid questions retained: 99
+  Questions dropped: 1
+  Success rate: 99.0%
 
 DROPPED QUESTIONS BREAKDOWN:
   - Missing required keys: 0
-  - Invalid question length: 1
+  - Invalid question length: 0
   - Invalid options structure: 0
   - Invalid/unfixable answer: 0
   - Duplicate questions: 1
