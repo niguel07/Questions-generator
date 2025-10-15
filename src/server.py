@@ -1,7 +1,7 @@
 """
-Server API - Phase 5 & 6
-FastAPI backend that serves analytics and handles file uploads + generation.
-Provides endpoints for the React dashboard and interactive generation UI.
+Server API - Phases 5-10
+Comprehensive FastAPI backend with analytics, file uploads, generation,
+AI review, user management, and dataset export/import.
 """
 
 import json
@@ -9,27 +9,38 @@ import os
 import subprocess
 import asyncio
 from pathlib import Path
-from typing import Dict, Any, List
+from typing import Dict, Any, List, Optional
 from datetime import datetime
-from fastapi import FastAPI, HTTPException, UploadFile, File, BackgroundTasks
+from fastapi import FastAPI, HTTPException, UploadFile, File, BackgroundTasks, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse, PlainTextResponse, StreamingResponse
+from fastapi.responses import JSONResponse, PlainTextResponse, FileResponse
+from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
+import logging
 
+# Import our custom modules
+from reviewer import QuestionReviewer
+from users import UserManager
+
+# Configure logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 # Initialize FastAPI app
 app = FastAPI(
-    title="Question Generator Server API",
-    description="API for analytics, file uploads, and question generation",
-    version="2.0.0"
+    title="Question Generator AI - Complete System",
+    description="Full-featured API for question generation, review, and management",
+    version="3.0.0"
 )
 
-# CORS configuration for React frontend
+# CORS configuration
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[
         "http://localhost:5173",
         "http://127.0.0.1:5173",
+        "http://localhost:8000",
+        "http://127.0.0.1:8000",
     ],
     allow_credentials=True,
     allow_methods=["*"],
@@ -41,42 +52,81 @@ QUESTIONS_FILE = Path("output/questions.json")
 VALIDATION_REPORT_FILE = Path("output/validation_report.txt")
 BOOKS_DIR = Path("books")
 
-# Global state for generation progress
+# Initialize managers
+reviewer = QuestionReviewer()
+user_manager = UserManager()
+
+# Global state
 generation_state = {
-    "status": "idle",  # idle, uploading, generating, completed, error
-    "progress": 0,  # 0-100
+    "status": "idle",
+    "progress": 0,
     "message": "",
     "logs": [],
     "start_time": None,
     "end_time": None,
-    "error": None
+    "error": None,
+    "current_user": None
+}
+
+current_session = {
+    "user": None
 }
 
 
+# ============================================================================
+# REQUEST/RESPONSE MODELS
+# ============================================================================
+
 class GenerationRequest(BaseModel):
-    """Request model for generation endpoint."""
-    topic: str
+    """Request model for multi-topic generation."""
+    topics: List[str]
     total_questions: int
 
+class ReviewRequest(BaseModel):
+    """Request model for question review."""
+    question: str
+    options: Dict[str, str]
+    answer: str
+    explanation: str
+    category: str
+    difficulty: str
+
+class QuestionUpdate(BaseModel):
+    """Request model for updating a question."""
+    question: Optional[str] = None
+    options: Optional[Dict[str, str]] = None
+    answer: Optional[str] = None
+    explanation: Optional[str] = None
+    category: Optional[str] = None
+    difficulty: Optional[str] = None
+
+class LoginRequest(BaseModel):
+    """Request model for user login."""
+    username: str
+
+
+# ============================================================================
+# UTILITY FUNCTIONS
+# ============================================================================
 
 def load_questions() -> list:
     """Load questions from JSON file."""
     if not QUESTIONS_FILE.exists():
-        raise HTTPException(
-            status_code=404,
-            detail="Questions file not found. Please generate questions first."
-        )
+        return []
     
     try:
         with open(QUESTIONS_FILE, 'r', encoding='utf-8') as f:
             questions = json.load(f)
         return questions
     except json.JSONDecodeError:
-        raise HTTPException(
-            status_code=500,
-            detail="Invalid JSON in questions file"
-        )
+        logger.error("Invalid JSON in questions file")
+        return []
 
+def save_questions(questions: list):
+    """Save questions to JSON file."""
+    QUESTIONS_FILE.parent.mkdir(parents=True, exist_ok=True)
+    with open(QUESTIONS_FILE, 'w', encoding='utf-8') as f:
+        json.dump(questions, f, ensure_ascii=False, indent=2)
 
 def calculate_summary(questions: list) -> Dict[str, Any]:
     """Calculate summary statistics from questions."""
@@ -86,31 +136,22 @@ def calculate_summary(questions: list) -> Dict[str, Any]:
             "avg_quality_score": 0.0,
             "categories": {},
             "difficulty": {},
-            "quality_distribution": {
-                "excellent": 0,
-                "good": 0,
-                "fair": 0,
-                "poor": 0
-            }
+            "quality_distribution": {"excellent": 0, "good": 0, "fair": 0, "poor": 0}
         }
     
-    # Count categories
     categories = {}
     for q in questions:
         cat = q.get("category", "Unknown")
         categories[cat] = categories.get(cat, 0) + 1
     
-    # Count difficulty levels
     difficulty = {}
     for q in questions:
         diff = q.get("difficulty", "Unknown")
         difficulty[diff] = difficulty.get(diff, 0) + 1
     
-    # Calculate average quality score
     quality_scores = [q.get("quality_score", 0.0) for q in questions]
     avg_quality = sum(quality_scores) / len(quality_scores) if quality_scores else 0.0
     
-    # Quality distribution
     excellent = sum(1 for s in quality_scores if s >= 0.9)
     good = sum(1 for s in quality_scores if 0.7 <= s < 0.9)
     fair = sum(1 for s in quality_scores if 0.5 <= s < 0.7)
@@ -129,7 +170,6 @@ def calculate_summary(questions: list) -> Dict[str, Any]:
         }
     }
 
-
 def update_progress(status: str, progress: int, message: str, add_log: bool = True):
     """Update global generation state."""
     generation_state["status"] = status
@@ -139,105 +179,112 @@ def update_progress(status: str, progress: int, message: str, add_log: bool = Tr
     if add_log:
         timestamp = datetime.now().strftime("%H:%M:%S")
         generation_state["logs"].append(f"[{timestamp}] {message}")
+        logger.info(message)
 
-
-async def run_generation_process(topic: str, total_questions: int):
-    """Run the question generation process in the background."""
+async def run_generation_process(topics: List[str], total_questions: int, username: Optional[str] = None):
+    """Run the question generation process for multiple topics."""
     try:
         generation_state["start_time"] = datetime.now()
         generation_state["logs"] = []
         generation_state["error"] = None
+        generation_state["current_user"] = username
         
-        update_progress("generating", 10, f"Starting generation: {total_questions} questions on '{topic}'")
+        update_progress("generating", 10, f"Starting generation: {total_questions} questions on {len(topics)} topic(s)")
         
-        # Build command
-        cmd = [
-            "python", "src/main.py",
-            "--input-dir", "books",
-            "--output-file", "output/questions.json",
-            "--topic", topic,
-            "--total-questions", str(total_questions)
-        ]
+        # Generate questions per topic
+        questions_per_topic = total_questions // len(topics)
         
-        # Run the generation process
-        update_progress("generating", 20, "Parsing PDF files...")
+        for idx, topic in enumerate(topics):
+            topic_progress_start = 10 + (idx * 80 // len(topics))
+            update_progress("generating", topic_progress_start, f"Generating questions for topic: {topic}")
+            
+            # Build command for this topic
+            cmd = [
+                "python", "src/main.py",
+                "--input-dir", "books",
+                "--output-file", f"output/questions_{topic.replace(' ', '_')}.json",
+                "--topic", topic,
+                "--total-questions", str(questions_per_topic)
+            ]
+            
+            # Run generation
+            process = subprocess.Popen(
+                cmd,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                text=True,
+                bufsize=1
+            )
+            
+            for line in process.stdout:
+                line = line.strip()
+                if line:
+                    current_prog = topic_progress_start + (idx + 1) * 60 // len(topics)
+                    update_progress("generating", current_prog, line)
+                    await asyncio.sleep(0.1)
+            
+            process.wait()
+            
+            if process.returncode != 0:
+                error_msg = process.stderr.read() if process.stderr else "Unknown error"
+                generation_state["error"] = f"Failed for topic '{topic}': {error_msg}"
+                update_progress("error", 0, f"✗ Generation failed for topic: {topic}")
+                return
         
-        # Use subprocess to run the generation
-        process = subprocess.Popen(
-            cmd,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            text=True,
-            bufsize=1
-        )
+        # Merge all topic files
+        update_progress("generating", 90, "Merging questions from all topics...")
+        all_questions = []
+        for topic in topics:
+            topic_file = Path(f"output/questions_{topic.replace(' ', '_')}.json")
+            if topic_file.exists():
+                with open(topic_file, 'r', encoding='utf-8') as f:
+                    topic_questions = json.load(f)
+                    # Add topic field to each question
+                    for q in topic_questions:
+                        q['source_topic'] = topic
+                    all_questions.extend(topic_questions)
+                topic_file.unlink()  # Delete temporary file
         
-        # Monitor progress
-        progress_steps = {
-            "Parsing": 30,
-            "Chunking": 40,
-            "Generating": 60,
-            "Validation": 80,
-            "Scoring": 90,
-            "Saving": 95
-        }
+        # Save merged questions
+        save_questions(all_questions)
         
-        current_progress = 20
+        generation_state["end_time"] = datetime.now()
+        update_progress("completed", 100, f"✓ Generated {len(all_questions)} questions successfully!")
         
-        # Read output line by line
-        for line in process.stdout:
-            line = line.strip()
-            if line:
-                # Update progress based on keywords
-                for keyword, prog in progress_steps.items():
-                    if keyword.lower() in line.lower():
-                        current_progress = prog
-                        break
-                
-                update_progress("generating", current_progress, line)
-                await asyncio.sleep(0.1)  # Small delay for UI updates
-        
-        # Wait for process to complete
-        return_code = process.wait()
-        
-        if return_code == 0:
-            generation_state["end_time"] = datetime.now()
-            update_progress("completed", 100, "✓ Generation completed successfully!")
-        else:
-            error_msg = process.stderr.read() if process.stderr else "Unknown error"
-            generation_state["error"] = error_msg
-            update_progress("error", 0, f"✗ Generation failed: {error_msg}")
+        # Log session for user
+        if username:
+            user_manager.add_session(username, {
+                "topics": topics,
+                "questions_generated": len(all_questions),
+                "avg_quality": calculate_summary(all_questions)["avg_quality_score"],
+                "timestamp": datetime.now().isoformat()
+            })
             
     except Exception as e:
         generation_state["error"] = str(e)
         update_progress("error", 0, f"✗ Error: {str(e)}")
+        logger.error(f"Generation error: {e}")
 
 
 # ============================================================================
-# ANALYTICS ENDPOINTS (Phase 5)
+# CORE ENDPOINTS
 # ============================================================================
 
 @app.get("/")
 async def root():
     """Root endpoint with API information."""
     return {
-        "name": "Question Generator Server API",
-        "version": "2.0.0",
+        "name": "Question Generator AI - Complete System",
+        "version": "3.0.0",
+        "phases": ["1-10 Complete"],
         "endpoints": {
-            "analytics": {
-                "/summary": "Get question statistics summary",
-                "/validation-report": "Get validation report text",
-                "/questions": "Get sample questions",
-                "/health": "Health check endpoint"
-            },
-            "generation": {
-                "/upload": "Upload PDF files",
-                "/generate": "Start question generation",
-                "/progress": "Get generation progress",
-                "/status": "Get current status"
-            }
+            "analytics": ["/summary", "/validation-report", "/questions", "/health"],
+            "generation": ["/upload", "/generate", "/progress", "/status", "/files"],
+            "review": ["/review", "/update-question/{id}"],
+            "users": ["/login", "/logout", "/sessions", "/user-stats"],
+            "export": ["/export", "/import", "/download"]
         }
     }
-
 
 @app.get("/health")
 async def health_check():
@@ -245,10 +292,15 @@ async def health_check():
     return {
         "status": "healthy",
         "questions_file_exists": QUESTIONS_FILE.exists(),
-        "validation_report_exists": VALIDATION_REPORT_FILE.exists(),
-        "books_directory_exists": BOOKS_DIR.exists()
+        "books_directory_exists": BOOKS_DIR.exists(),
+        "reviewer_initialized": reviewer is not None,
+        "user_manager_initialized": user_manager is not None
     }
 
+
+# ============================================================================
+# ANALYTICS ENDPOINTS (Phase 5)
+# ============================================================================
 
 @app.get("/summary")
 async def get_summary():
@@ -257,30 +309,19 @@ async def get_summary():
     summary = calculate_summary(questions)
     return JSONResponse(content=summary)
 
-
 @app.get("/validation-report")
 async def get_validation_report():
     """Get validation report text."""
     if not VALIDATION_REPORT_FILE.exists():
-        raise HTTPException(
-            status_code=404,
-            detail="Validation report not found. Please run validation first."
-        )
+        raise HTTPException(status_code=404, detail="Validation report not found")
     
-    try:
-        with open(VALIDATION_REPORT_FILE, 'r', encoding='utf-8') as f:
-            report = f.read()
-        return PlainTextResponse(content=report)
-    except Exception as e:
-        raise HTTPException(
-            status_code=500,
-            detail=f"Error reading validation report: {str(e)}"
-        )
-
+    with open(VALIDATION_REPORT_FILE, 'r', encoding='utf-8') as f:
+        report = f.read()
+    return PlainTextResponse(content=report)
 
 @app.get("/questions")
-async def get_questions(limit: int = 10):
-    """Get sample questions."""
+async def get_questions(limit: int = 100):
+    """Get questions with optional limit."""
     questions = load_questions()
     return JSONResponse(content={
         "total": len(questions),
@@ -290,16 +331,12 @@ async def get_questions(limit: int = 10):
 
 
 # ============================================================================
-# GENERATION ENDPOINTS (Phase 6)
+# GENERATION ENDPOINTS (Phase 6-7)
 # ============================================================================
 
 @app.post("/upload")
 async def upload_files(files: List[UploadFile] = File(...)):
-    """
-    Upload PDF files to the books directory.
-    Accepts multiple files, max 50MB each.
-    """
-    # Ensure books directory exists
+    """Upload PDF files to the books directory."""
     BOOKS_DIR.mkdir(parents=True, exist_ok=True)
     
     uploaded_files = []
@@ -307,20 +344,16 @@ async def upload_files(files: List[UploadFile] = File(...)):
     
     for file in files:
         try:
-            # Check file extension
             if not file.filename.lower().endswith('.pdf'):
                 errors.append(f"{file.filename}: Not a PDF file")
                 continue
             
-            # Read file content
             content = await file.read()
             
-            # Check file size (50MB limit)
             if len(content) > 50 * 1024 * 1024:
                 errors.append(f"{file.filename}: File too large (>50MB)")
                 continue
             
-            # Save file
             file_path = BOOKS_DIR / file.filename
             with open(file_path, 'wb') as f:
                 f.write(content)
@@ -341,64 +374,39 @@ async def upload_files(files: List[UploadFile] = File(...)):
         "total_errors": len(errors)
     })
 
-
 @app.post("/generate")
-async def start_generation(
-    request: GenerationRequest,
-    background_tasks: BackgroundTasks
-):
-    """
-    Start the question generation process.
-    Runs in the background and provides progress updates.
-    """
-    # Check if generation is already running
+async def start_generation(request: GenerationRequest, background_tasks: BackgroundTasks):
+    """Start multi-topic question generation."""
     if generation_state["status"] == "generating":
-        raise HTTPException(
-            status_code=409,
-            detail="Generation already in progress"
-        )
+        raise HTTPException(status_code=409, detail="Generation already in progress")
     
-    # Validate input
     if request.total_questions < 100 or request.total_questions > 10000:
-        raise HTTPException(
-            status_code=400,
-            detail="Total questions must be between 100 and 10,000"
-        )
+        raise HTTPException(status_code=400, detail="Total questions must be between 100 and 10,000")
     
-    if not request.topic or len(request.topic.strip()) == 0:
-        raise HTTPException(
-            status_code=400,
-            detail="Topic cannot be empty"
-        )
+    if not request.topics or len(request.topics) == 0:
+        raise HTTPException(status_code=400, detail="At least one topic is required")
     
-    # Check if books directory has PDF files
     if not BOOKS_DIR.exists() or not list(BOOKS_DIR.glob("*.pdf")):
-        raise HTTPException(
-            status_code=400,
-            detail="No PDF files found in books directory. Please upload files first."
-        )
+        raise HTTPException(status_code=400, detail="No PDF files found. Please upload files first.")
     
-    # Reset state
     generation_state["status"] = "starting"
     generation_state["progress"] = 0
-    generation_state["message"] = "Initializing..."
     generation_state["logs"] = []
     generation_state["error"] = None
     
-    # Start generation in background
     background_tasks.add_task(
         run_generation_process,
-        request.topic,
-        request.total_questions
+        request.topics,
+        request.total_questions,
+        current_session.get("user")
     )
     
     return JSONResponse(content={
         "status": "started",
-        "message": "Generation process started",
-        "topic": request.topic,
+        "message": f"Generation started for {len(request.topics)} topic(s)",
+        "topics": request.topics,
         "total_questions": request.total_questions
     })
-
 
 @app.get("/progress")
 async def get_progress():
@@ -412,25 +420,23 @@ async def get_progress():
         "status": generation_state["status"],
         "progress": generation_state["progress"],
         "message": generation_state["message"],
-        "logs": generation_state["logs"][-20:],  # Last 20 log entries
+        "logs": generation_state["logs"][-20:],
         "error": generation_state["error"],
         "duration_seconds": duration
     })
 
-
 @app.get("/status")
 async def get_status():
-    """Get simple status (for polling)."""
+    """Get simple status."""
     return JSONResponse(content={
         "status": generation_state["status"],
         "progress": generation_state["progress"],
         "message": generation_state["message"]
     })
 
-
 @app.get("/files")
 async def list_uploaded_files():
-    """List all uploaded PDF files in books directory."""
+    """List all uploaded PDF files."""
     if not BOOKS_DIR.exists():
         return JSONResponse(content={"files": []})
     
@@ -444,13 +450,168 @@ async def list_uploaded_files():
             "modified": datetime.fromtimestamp(stat.st_mtime).isoformat()
         })
     
+    return JSONResponse(content={"files": files, "total": len(files)})
+
+
+# ============================================================================
+# REVIEW ENDPOINTS (Phase 8)
+# ============================================================================
+
+@app.post("/review")
+async def review_question(request: ReviewRequest):
+    """Review a question using Claude AI."""
+    try:
+        question_data = {
+            "question": request.question,
+            "options": request.options,
+            "answer": request.answer,
+            "explanation": request.explanation,
+            "category": request.category,
+            "difficulty": request.difficulty
+        }
+        
+        result = reviewer.review_question(question_data)
+        return JSONResponse(content=result)
+        
+    except Exception as e:
+        logger.error(f"Review error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.patch("/update-question/{question_id}")
+async def update_question(question_id: int, update: QuestionUpdate):
+    """Update a specific question in the dataset."""
+    questions = load_questions()
+    
+    if question_id < 0 or question_id >= len(questions):
+        raise HTTPException(status_code=404, detail="Question not found")
+    
+    # Update fields
+    if update.question is not None:
+        questions[question_id]["question"] = update.question
+    if update.options is not None:
+        questions[question_id]["options"] = update.options
+    if update.answer is not None:
+        questions[question_id]["answer"] = update.answer
+    if update.explanation is not None:
+        questions[question_id]["explanation"] = update.explanation
+    if update.category is not None:
+        questions[question_id]["category"] = update.category
+    if update.difficulty is not None:
+        questions[question_id]["difficulty"] = update.difficulty
+    
+    # Add metadata
+    questions[question_id]["last_updated"] = datetime.now().isoformat()
+    questions[question_id]["updated_by_reviewer"] = True
+    
+    save_questions(questions)
+    
     return JSONResponse(content={
-        "files": files,
-        "total": len(files)
+        "success": True,
+        "message": "Question updated successfully",
+        "question": questions[question_id]
     })
+
+
+# ============================================================================
+# USER MANAGEMENT ENDPOINTS (Phase 9)
+# ============================================================================
+
+@app.post("/login")
+async def login(request: LoginRequest):
+    """Login or create a user."""
+    result = user_manager.login(request.username)
+    if result["success"]:
+        current_session["user"] = request.username
+    return JSONResponse(content=result)
+
+@app.post("/logout")
+async def logout():
+    """Logout current user."""
+    current_session["user"] = None
+    return JSONResponse(content={"success": True, "message": "Logged out successfully"})
+
+@app.get("/sessions")
+async def get_user_sessions(username: str, limit: int = 50):
+    """Get user's generation history."""
+    sessions = user_manager.get_sessions(username, limit)
+    return JSONResponse(content={"username": username, "sessions": sessions, "total": len(sessions)})
+
+@app.get("/user-stats")
+async def get_user_stats(username: str):
+    """Get user statistics."""
+    stats = user_manager.get_stats(username)
+    if not stats:
+        raise HTTPException(status_code=404, detail="User not found")
+    return JSONResponse(content=stats)
+
+
+# ============================================================================
+# EXPORT/IMPORT ENDPOINTS (Phase 9)
+# ============================================================================
+
+@app.get("/export")
+async def export_questions():
+    """Export questions JSON file."""
+    if not QUESTIONS_FILE.exists():
+        raise HTTPException(status_code=404, detail="No questions to export")
+    
+    return FileResponse(
+        QUESTIONS_FILE,
+        media_type="application/json",
+        filename=f"questions_export_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json"
+    )
+
+@app.get("/download")
+async def download_questions():
+    """Download questions JSON file."""
+    return await export_questions()
+
+@app.post("/import")
+async def import_questions(file: UploadFile = File(...)):
+    """Import questions from JSON file."""
+    try:
+        content = await file.read()
+        imported_questions = json.loads(content)
+        
+        if not isinstance(imported_questions, list):
+            raise HTTPException(status_code=400, detail="Invalid format: expected array of questions")
+        
+        # Merge with existing questions
+        existing_questions = load_questions()
+        merged = existing_questions + imported_questions
+        
+        save_questions(merged)
+        
+        return JSONResponse(content={
+            "success": True,
+            "message": f"Imported {len(imported_questions)} questions",
+            "total_questions": len(merged)
+        })
+        
+    except json.JSONDecodeError:
+        raise HTTPException(status_code=400, detail="Invalid JSON file")
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# ============================================================================
+# STATIC FILES (Phase 7 - Production)
+# ============================================================================
+
+# Serve static frontend build (if exists)
+frontend_dist = Path("frontend/dist")
+if frontend_dist.exists():
+    app.mount("/static", StaticFiles(directory=frontend_dist / "assets"), name="static")
+    
+    @app.get("/{full_path:path}")
+    async def serve_frontend(full_path: str):
+        """Serve React frontend for production."""
+        file_path = frontend_dist / full_path
+        if file_path.exists() and file_path.is_file():
+            return FileResponse(file_path)
+        return FileResponse(frontend_dist / "index.html")
 
 
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=8000)
-
+    uvicorn.run(app, host="0.0.0.0", port=8000, log_level="info")

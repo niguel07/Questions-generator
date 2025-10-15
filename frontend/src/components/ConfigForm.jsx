@@ -1,8 +1,10 @@
 import { useState } from 'react';
-import { Card, CardContent, Typography, TextField, Slider, Box, Button } from '@mui/material';
+import { Card, CardContent, Typography, TextField, Slider, Box, Button, Chip } from '@mui/material';
+import { motion } from 'framer-motion';
 
 function ConfigForm({ onGenerate, isGenerating }) {
-  const [topic, setTopic] = useState('Cameroon');
+  const [topicInput, setTopicInput] = useState('');
+  const [topics, setTopics] = useState([]);
   const [totalQuestions, setTotalQuestions] = useState(1000);
 
   const handleSliderChange = (event, newValue) => {
@@ -14,9 +16,23 @@ function ConfigForm({ onGenerate, isGenerating }) {
     setTotalQuestions(Math.min(10000, Math.max(100, value)));
   };
 
+  const handleAddTopic = (e) => {
+    if (e.key === 'Enter' && topicInput.trim()) {
+      e.preventDefault();
+      if (!topics.includes(topicInput.trim())) {
+        setTopics([...topics, topicInput.trim()]);
+      }
+      setTopicInput('');
+    }
+  };
+
+  const handleRemoveTopic = (topicToRemove) => {
+    setTopics(topics.filter(t => t !== topicToRemove));
+  };
+
   const handleGenerate = () => {
-    if (topic.trim() && totalQuestions >= 100 && totalQuestions <= 10000) {
-      onGenerate({ topic: topic.trim(), total_questions: totalQuestions });
+    if (topics.length > 0 && totalQuestions >= 100 && totalQuestions <= 10000) {
+      onGenerate({ topics, total_questions: totalQuestions });
     }
   };
 
@@ -27,16 +43,17 @@ function ConfigForm({ onGenerate, isGenerating }) {
           ⚙️ Generation Settings
         </Typography>
 
-        {/* Topic Input */}
+        {/* Multi-Topic Input */}
         <Box sx={{ mb: 3 }}>
           <Typography variant="subtitle2" sx={{ mb: 1, color: '#6B7280', fontWeight: 500 }}>
-            Topic
+            Topics {topics.length > 0 && `(${topics.length})`}
           </Typography>
           <TextField
             fullWidth
-            value={topic}
-            onChange={(e) => setTopic(e.target.value)}
-            placeholder="Enter topic (e.g., Cameroon, Python Programming, World History)"
+            value={topicInput}
+            onChange={(e) => setTopicInput(e.target.value)}
+            onKeyDown={handleAddTopic}
+            placeholder="Type a topic and press Enter (e.g., Cameroon, Python, History)"
             variant="outlined"
             size="small"
             disabled={isGenerating}
@@ -53,8 +70,35 @@ function ConfigForm({ onGenerate, isGenerating }) {
             }}
           />
           <Typography variant="caption" sx={{ color: '#9CA3AF', mt: 0.5, display: 'block' }}>
-            Questions will be generated about this topic
+            Add multiple topics for diverse question generation
           </Typography>
+
+          {/* Topic Chips */}
+          {topics.length > 0 && (
+            <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1, mt: 2 }}>
+              {topics.map((topic, index) => (
+                <motion.div
+                  key={topic}
+                  initial={{ scale: 0, opacity: 0 }}
+                  animate={{ scale: 1, opacity: 1 }}
+                  transition={{ delay: index * 0.05 }}
+                >
+                  <Chip
+                    label={topic}
+                    onDelete={isGenerating ? undefined : () => handleRemoveTopic(topic)}
+                    sx={{
+                      bgcolor: '#EFF6FF',
+                      color: '#2563EB',
+                      fontWeight: 500,
+                      '&:hover': {
+                        bgcolor: '#DBEAFE'
+                      }
+                    }}
+                  />
+                </motion.div>
+              ))}
+            </Box>
+          )}
         </Box>
 
         {/* Question Count Slider */}
@@ -110,23 +154,29 @@ function ConfigForm({ onGenerate, isGenerating }) {
         </Box>
 
         {/* Generate Button */}
-        <Button
-          fullWidth
-          variant="contained"
-          size="large"
-          onClick={handleGenerate}
-          disabled={isGenerating || !topic.trim()}
-          sx={{
-            bgcolor: '#2563EB',
-            '&:hover': { bgcolor: '#1D4ED8' },
-            textTransform: 'none',
-            fontWeight: 600,
-            py: 1.5,
-            fontSize: '1rem'
-          }}
+        <motion.div
+          whileHover={{ scale: isGenerating || topics.length === 0 ? 1 : 1.02 }}
+          whileTap={{ scale: isGenerating || topics.length === 0 ? 1 : 0.98 }}
         >
-          {isGenerating ? '⏳ Generating...' : '🚀 Generate Questions'}
-        </Button>
+          <Button
+            fullWidth
+            variant="contained"
+            size="large"
+            onClick={handleGenerate}
+            disabled={isGenerating || topics.length === 0}
+            sx={{
+              bgcolor: '#2563EB',
+              '&:hover': { bgcolor: '#1D4ED8' },
+              textTransform: 'none',
+              fontWeight: 600,
+              py: 1.5,
+              fontSize: '1rem',
+              transition: 'all 0.2s'
+            }}
+          >
+            {isGenerating ? '⏳ Generating...' : `🚀 Generate Questions${topics.length > 1 ? ` (${topics.length} topics)` : ''}`}
+          </Button>
+        </motion.div>
 
         {/* Info Text */}
         <Typography variant="caption" sx={{ color: '#9CA3AF', mt: 2, display: 'block', textAlign: 'center' }}>

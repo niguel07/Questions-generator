@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { Container, Box, Typography, Button, Tabs, Tab, Alert } from '@mui/material';
+import { motion } from 'framer-motion';
 import axios from 'axios';
 import StatsCard from './components/StatsCard';
 import ChartCard from './components/ChartCard';
@@ -7,6 +8,9 @@ import ReportPanel from './components/ReportPanel';
 import UploadCard from './components/UploadCard';
 import ConfigForm from './components/ConfigForm';
 import ProgressPanel from './components/ProgressPanel';
+import CompletionModal from './components/CompletionModal';
+import ReviewerPanel from './components/ReviewerPanel';
+import UserMenu from './components/UserMenu';
 import './App.css';
 
 const API_BASE_URL = 'http://localhost:8000';
@@ -30,6 +34,8 @@ function App() {
     error: null
   });
   const [pollInterval, setPollInterval] = useState(null);
+  const [showCompletionModal, setShowCompletionModal] = useState(false);
+  const [completionData, setCompletionData] = useState(null);
 
   // Fetch dashboard data
   const fetchDashboardData = async () => {
@@ -68,9 +74,17 @@ function App() {
           setPollInterval(null);
         }
         
-        // Refresh dashboard data if completed
+        // Show completion modal if completed
         if (response.data.status === 'completed') {
-          setTimeout(fetchDashboardData, 1000);
+          setTimeout(async () => {
+            const summaryData = await axios.get(`${API_BASE_URL}/summary`);
+            setCompletionData({
+              totalQuestions: summaryData.data.total_questions,
+              avgQuality: summaryData.data.avg_quality_score
+            });
+            setShowCompletionModal(true);
+            fetchDashboardData();
+          }, 1000);
         }
       }
     } catch (err) {
@@ -94,18 +108,49 @@ function App() {
       setIsGenerating(true);
       
       const response = await axios.post(`${API_BASE_URL}/generate`, {
-        topic: config.topic,
+        topics: config.topics,  // Multi-topic support
         total_questions: config.total_questions
       });
       
       // Start polling for progress
-      const interval = setInterval(fetchProgress, 2000); // Poll every 2 seconds
+      const interval = setInterval(fetchProgress, 2000);
       setPollInterval(interval);
       
     } catch (err) {
       setIsGenerating(false);
       alert(err.response?.data?.detail || 'Failed to start generation');
     }
+  };
+
+  // Handle completion modal actions
+  const handleDownload = async () => {
+    try {
+      const response = await axios.get(`${API_BASE_URL}/export`, {
+        responseType: 'blob'
+      });
+      
+      const url = window.URL.createObjectURL(new Blob([response.data]));
+      const link = document.createElement('a');
+      link.href = url;
+      link.setAttribute('download', `questions_${new Date().toISOString().split('T')[0]}.json`);
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+    } catch (error) {
+      console.error('Download error:', error);
+    }
+  };
+
+  const handleRestart = () => {
+    setShowCompletionModal(false);
+    setCompletionData(null);
+    setProgress({
+      status: 'idle',
+      progress: 0,
+      message: '',
+      logs: [],
+      error: null
+    });
   };
 
   // Tab change handler
@@ -137,23 +182,32 @@ function App() {
       <header className="header">
         <Container maxWidth="lg">
           <Box display="flex" justifyContent="space-between" alignItems="center" py={2}>
-            <Typography variant="h4" component="h1" sx={{ fontWeight: 700, color: 'white' }}>
-              Question Generator AI
-            </Typography>
-            <Button
-              variant="contained"
-              onClick={fetchDashboardData}
-              disabled={loading || currentTab !== 0}
-              sx={{ 
-                bgcolor: 'white', 
-                color: '#2563EB',
-                '&:hover': { bgcolor: '#F9FAFB' },
-                textTransform: 'none',
-                fontWeight: 600
-              }}
+            <motion.div
+              initial={{ opacity: 0, x: -20 }}
+              animate={{ opacity: 1, x: 0 }}
+              transition={{ duration: 0.5 }}
             >
-              🔄 Refresh
-            </Button>
+              <Typography variant="h4" component="h1" sx={{ fontWeight: 700, color: 'white' }}>
+                Question Generator AI
+              </Typography>
+            </motion.div>
+            <Box display="flex" gap={2} alignItems="center">
+              <Button
+                variant="contained"
+                onClick={fetchDashboardData}
+                disabled={loading || currentTab !== 0}
+                sx={{ 
+                  bgcolor: 'white', 
+                  color: '#2563EB',
+                  '&:hover': { bgcolor: '#F9FAFB' },
+                  textTransform: 'none',
+                  fontWeight: 600
+                }}
+              >
+                🔄 Refresh
+              </Button>
+              <UserMenu />
+            </Box>
           </Box>
           
           {/* Tabs */}
@@ -177,6 +231,7 @@ function App() {
           >
             <Tab label="📊 Dashboard" />
             <Tab label="🚀 Generate" />
+            <Tab label="🤖 AI Review" />
           </Tabs>
         </Container>
       </header>
@@ -275,8 +330,34 @@ function App() {
               </Box>
             </Box>
           )}
+
+          {/* AI Review Tab */}
+          {currentTab === 2 && (
+            <motion.div
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.5 }}
+            >
+              <Box maxWidth="1200px" mx="auto">
+                <Typography variant="h5" sx={{ mb: 3, fontWeight: 600, color: '#1F2937' }}>
+                  AI-Powered Question Review
+                </Typography>
+                <ReviewerPanel />
+              </Box>
+            </motion.div>
+          )}
         </Container>
       </main>
+
+      {/* Completion Modal */}
+      <CompletionModal
+        open={showCompletionModal}
+        onClose={() => setShowCompletionModal(false)}
+        totalQuestions={completionData?.totalQuestions}
+        avgQuality={completionData?.avgQuality}
+        onDownload={handleDownload}
+        onRestart={handleRestart}
+      />
 
       {/* Footer */}
       <footer className="footer">
@@ -286,7 +367,7 @@ function App() {
           </Typography>
         </Container>
       </footer>
-    </div>
+      </div>
   );
 }
 
