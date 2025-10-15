@@ -6,6 +6,7 @@ Scores range from 0.0 to 1.0, with higher scores indicating better quality.
 
 from typing import List, Dict, Any
 import re
+from tqdm import tqdm
 
 
 class QualityScorer:

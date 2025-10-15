@@ -885,7 +885,277 @@ uvicorn src.analytics:app --reload --port 8001
 │  │  Total: 10,000 | Valid: 9,876 | Dropped: 124       │ │
 │  └─────────────────────────────────────────────────────┘ │
 ├─────────────────────────────────────────────────────────┤
-│               Niguel Clark © 2025                        │
+│               Niguel Clark © 2025
+
+---
+
+## Phase 6 – Interactive Generation UI
+
+Phase 6 introduces a professional, minimalist web interface for uploading books and generating questions with real-time progress monitoring.
+
+### 🎨 Features
+
+- **Drag-and-Drop Upload**: Upload PDF files by dragging them into the browser or clicking to browse
+- **Real-Time Progress**: Live progress bar and activity log during generation
+- **Tabbed Interface**: Switch between Analytics Dashboard and Question Generation
+- **Responsive Design**: Works seamlessly on desktop and mobile devices
+- **Two-Color Theme**: Clean, professional UI with blue (#2563EB) and neutral (#F9FAFB) colors
+
+### 🚀 Getting Started
+
+#### 1. Start the Backend Server
+
+In the first terminal, start the FastAPI backend:
+
+```bash
+cd Questions-generator
+python src/server.py
+```
+
+The API will be available at `http://localhost:8000`
+
+#### 2. Start the Frontend Development Server
+
+In a second terminal, start the React frontend:
+
+```bash
+cd Questions-generator/frontend
+npm install  # First time only
+npm run dev
+```
+
+The UI will be available at `http://localhost:5173`
+
+### 📝 How to Use
+
+1. **Open the Application**
+   - Navigate to `http://localhost:5173` in your browser
+   - You'll see two tabs: Dashboard and Generate
+
+2. **Upload PDF Books**
+   - Click on the "Generate" tab
+   - Drag and drop PDF files into the upload area (or click to browse)
+   - Maximum 50MB per file
+   - Click "Upload" to send files to the server
+
+3. **Configure Generation Settings**
+   - Enter a topic (e.g., "Cameroon", "Python Programming", "World History")
+   - Use the slider to select number of questions (100-10,000)
+   - Estimated generation time is displayed
+
+4. **Start Generation**
+   - Click the "Generate Questions" button
+   - Watch real-time progress in the activity log
+   - Progress bar shows completion percentage
+
+5. **Download Results**
+   - When generation completes, a "Download Questions JSON" button appears
+   - Click to download your generated questions
+   - Switch to the Dashboard tab to view analytics
+
+### 🖥️ UI Components
+
+#### UploadCard Component
+- Drag-and-drop zone for PDF uploads
+- File list with size display
+- Remove individual files before upload
+- Multi-file support
+
+#### ConfigForm Component
+- Topic input field with validation
+- Question count slider (100-10,000)
+- Estimated time calculation
+- Generate button with disabled state during processing
+
+#### ProgressPanel Component
+- Status indicators (idle, generating, completed, error)
+- Progress bar with percentage
+- Scrollable activity log
+- Success/error alerts
+- Download button on completion
+
+### 🔧 Backend API Endpoints
+
+Phase 6 adds the following new endpoints to `src/server.py`:
+
+#### File Upload
+```
+POST /upload
+Content-Type: multipart/form-data
+
+Accepts multiple PDF files and saves them to books/ directory
+Returns: Upload success/error report
+```
+
+#### Start Generation
+```
+POST /generate
+Content-Type: application/json
+Body: {
+  "topic": "Cameroon",
+  "total_questions": 1000
+}
+
+Starts background generation process
+Returns: Confirmation message
+```
+
+#### Get Progress
+```
+GET /progress
+
+Returns current generation status and logs
+Response: {
+  "status": "generating|completed|error|idle",
+  "progress": 0-100,
+  "message": "Current step description",
+  "logs": ["[12:30:45] Log entry 1", ...],
+  "error": null,
+  "duration_seconds": 123.45
+}
+```
+
+#### List Uploaded Files
+```
+GET /files
+
+Returns list of PDF files in books/ directory
+Response: {
+  "files": [
+    {"filename": "book.pdf", "size": 1234567, "size_mb": 1.18}
+  ],
+  "total": 1
+}
+```
+
+### 📊 Expected Behavior
+
+**Typical Generation Flow:**
+
+1. User opens `http://localhost:5173`
+2. Navigates to "Generate" tab
+3. Uploads 1-20 PDF books (max 50MB each)
+4. Enters topic: "Cameroon"
+5. Sets question count: 1000
+6. Clicks "Generate Questions"
+7. UI shows progress:
+   - ⏳ Starting generation (10%)
+   - 📖 Parsing PDF files (20-30%)
+   - ✂️ Chunking text (40%)
+   - 🤖 Generating questions with Claude (60%)
+   - ✓ Validating questions (80%)
+   - ⭐ Scoring quality (90%)
+   - 💾 Saving results (95%)
+   - ✓ Completed (100%)
+8. "Download Questions JSON" button appears
+9. User downloads `questions.json`
+10. User switches to Dashboard tab to view analytics
+
+### 🎨 Design Guidelines
+
+The UI follows these design principles:
+
+- **Primary Color**: #2563EB (Blue) - for buttons, links, active states
+- **Neutral Background**: #F9FAFB (Light Gray) - for cards and secondary backgrounds
+- **Border Radius**: 8px for all cards and inputs
+- **Shadows**: Subtle `0 1px 3px rgba(0,0,0,0.12)` for depth
+- **Font**: System font stack (Inter/Montserrat-style)
+- **Spacing**: Consistent 24px gaps between sections
+- **Hover Effects**: Smooth 0.2s transitions on interactive elements
+
+### 🔍 Troubleshooting
+
+**Backend not connecting:**
+- Ensure `python src/server.py` is running on port 8000
+- Check that `.env` file contains valid `CLAUDE_API_KEY`
+
+**Upload fails:**
+- Verify file is a valid PDF (<50MB)
+- Check that `books/` directory exists and is writable
+
+**Generation hangs:**
+- Check `output/errors.log` for API errors
+- Verify Claude API key has sufficient credits
+- Ensure PDFs contain readable text (not scanned images)
+
+**Progress not updating:**
+- Backend streams progress every 2 seconds
+- Check browser console for connection errors
+- Refresh the page and try again
+
+### 📁 Updated Project Structure
+
+```
+Questions-generator/
+├── src/
+│   ├── main.py              # CLI entry point
+│   ├── server.py            # FastAPI backend (Phase 5 & 6)
+│   ├── parser.py            # PDF extraction
+│   ├── chunker.py           # Text chunking
+│   ├── generator.py         # Claude AI generation
+│   ├── validator.py         # Question validation
+│   ├── quality_scorer.py    # Quality scoring
+│   └── utils/
+│       └── json_saver.py    # JSON utilities
+├── frontend/                # React UI (Phase 5 & 6)
+│   ├── src/
+│   │   ├── App.jsx          # Main app with tabs
+│   │   ├── components/
+│   │   │   ├── StatsCard.jsx        # Dashboard stats
+│   │   │   ├── ChartCard.jsx        # Charts
+│   │   │   ├── ReportPanel.jsx      # Validation report
+│   │   │   ├── UploadCard.jsx       # File upload (Phase 6)
+│   │   │   ├── ConfigForm.jsx       # Settings (Phase 6)
+│   │   │   └── ProgressPanel.jsx    # Progress (Phase 6)
+│   │   ├── App.css
+│   │   └── index.css
+│   ├── package.json
+│   └── vite.config.js
+├── books/                   # PDF uploads stored here
+├── output/                  # Generated questions and reports
+├── .env                     # API keys
+├── requirements.txt
+└── README.md
+```
+
+### 🚀 Development Notes
+
+**Frontend Technologies:**
+- React 18 with Vite
+- Material-UI (MUI) for components
+- Axios for HTTP requests
+- EventSource for Server-Sent Events (future enhancement)
+
+**Backend Technologies:**
+- FastAPI with Uvicorn
+- Background task processing
+- CORS middleware for cross-origin requests
+- Global state management for progress tracking
+
+**Deployment Ready:**
+- Frontend builds to static files (`npm run build`)
+- Backend can be served with `uvicorn src.server:app --host 0.0.0.0 --port 8000`
+- Can be containerized with Docker (future enhancement)
+
+### 🎯 Next Steps (Phase 7)
+
+Future enhancements planned:
+- WebSocket support for real-time updates
+- Multi-topic generation in single session
+- Question preview before download
+- Export to multiple formats (CSV, PDF)
+- User authentication and saved sessions
+- Deployment to cloud platform (Vercel + Railway/Heroku)
+
+---
+
+### 📜 License
+
+This project is licensed under the MIT License - see the LICENSE file for details.
+
+---
+
+**Built with ❤️ by Niguel Clark**                        │
 └─────────────────────────────────────────────────────────┘
 ```
 

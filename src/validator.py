@@ -11,6 +11,7 @@ from pathlib import Path
 from typing import List, Dict, Any, Set, Tuple
 from collections import Counter
 from datetime import datetime
+from tqdm import tqdm
 
 
 # Validation report file path
